@@ -1,0 +1,115 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: claude-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: github.event.sender.type != 'Bot' && github.event.issue.pull_request == null
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude triage
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Bash(gh issue view:*),Bash(gh label list:*),Bash(gh issue edit:*),Read,Glob,Grep,Write"'
+          prompt: |
+            Estás haciendo triage automático del issue #${{ github.event.issue.number }} de este
+            repositorio (un juego de Tetris en JavaScript vanilla, ver CLAUDE.md).
+
+            Pasos:
+            1. Lee el issue completo con `gh issue view ${{ github.event.issue.number }} --json title,body,labels,comments`.
+            2. Lee `CLAUDE.md` y revisa el código relevante (`game.js`, `index.html`, `style.css`)
+               con Read/Glob/Grep para entender dónde podría estar el problema o dónde
+               implementarse el pedido.
+            3. Ejecuta `gh label list` para ver los labels existentes en el repositorio.
+               Elige los labels que apliquen a este issue y asígnalos con
+               `gh issue edit ${{ github.event.issue.number }} --add-label "..."`.
+               Si el issue ya tiene labels que ya no corresponden tras una edición, quítalos con
+               `--remove-label "..."`. NO crees labels nuevos: usa únicamente los que ya existen.
+            4. NO comentes directamente en el issue. En su lugar, escribe el diagnóstico en un
+               archivo llamado `triage-diagnosis.md` en la raíz del repo, en español, con
+               exactamente esta estructura:
+
+               ```
+               <!-- claude-triage -->
+               ## 🔍 Diagnóstico automático
+
+               **Resumen:** <una o dos frases>
+
+               **Tipo:** <bug / mejora / pregunta / duda / otro>
+
+               **Causa probable / Análisis:**
+               <explicación técnica>
+
+               **Archivos y funciones involucradas:**
+               - `archivo.js`: `funcion()` — por qué es relevante
+
+               **Enfoque de solución sugerido:**
+               1. <paso>
+               2. <paso>
+
+               **Riesgos / valores acoplados a tener en cuenta:**
+               <menciona si aplica algo de la sección "Coupled values" de CLAUDE.md>
+
+               **Información faltante:**
+               <preguntas al autor si el issue es ambiguo o falta información; si no falta nada, escribe "Ninguna.">
+               ```
+
+            5. No modifiques ningún otro archivo del repositorio. No hagas commit de nada.
+
+      - name: Publish diagnosis comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'triage-diagnosis.md';
+            if (!fs.existsSync(path)) {
+              core.setFailed('triage-diagnosis.md no fue generado por Claude.');
+              return;
+            }
+            const body = fs.readFileSync(path, 'utf8');
+            if (!body.includes('<!-- claude-triage -->')) {
+              core.setFailed('triage-diagnosis.md no contiene el marcador esperado.');
+              return;
+            }
+
+            const issue_number = context.payload.issue.number;
+            const { owner, repo } = context.repo;
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number }
+            );
+            const existing = comments.find(c => c.body && c.body.includes('<!-- claude-triage -->'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo,
+                issue_number,
+                body,
+              });
+            }
