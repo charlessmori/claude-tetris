@@ -45,7 +45,10 @@ jobs:
                Si el issue ya tiene labels que ya no corresponden tras una edición, quítalos con
                `--remove-label "..."`. NO crees labels nuevos: usa únicamente los que ya existen.
             4. NO comentes directamente en el issue. En su lugar, escribe el diagnóstico en un
-               archivo llamado `triage-diagnosis.md` en la raíz del repo, en español, con
+               archivo llamado `triage-diagnosis.md` en la raíz del repo, en español, en formato
+               Markdown compatible con GitHub (GitHub Flavored Markdown: encabezados con `#`,
+               listas con `-`/`1.`, negrita con `**texto**`, bloques de código con triple
+               backtick, etc., sin HTML crudo salvo el comentario `<!-- claude-triage -->`), con
                exactamente esta estructura:
 
                ```
