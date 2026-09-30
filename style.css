@@ -154,6 +154,19 @@ body {
   gap: 6px;
 }
 
+.panel-section.hidden {
+  display: none;
+}
+
+#powerup {
+  font-size: 16px;
+}
+
+#powerup-progress {
+  font-size: 11px;
+  color: var(--label);
+}
+
 .label {
   font-size: 10px;
   letter-spacing: 2px;
